@@ -1,4 +1,3 @@
-use std::fmt::Error;
 use async_trait::async_trait;
 use rs_consul::{Config, Consul, ReadKeyRequest, ReadKeyResponse};
 
@@ -7,9 +6,22 @@ pub trait KeyValueReader {
     async fn read_key(&self, key: &'static str) -> Option<String>;
 }
 
-struct AgConsul {
+#[async_trait]
+pub trait FeatureReader {
+    async fn is_feature_enabled(&self, key: &'static str) -> bool;
+}
+
+pub struct AgConsul {
     dc: &'static str,
     consul_client: Consul
+}
+
+#[async_trait]
+impl FeatureReader for AgConsul {
+    async fn is_feature_enabled(&self, key: &'static str) -> bool {
+        let result = Self::read_key(self, key).await.unwrap_or_default();
+        return result == "true";
+    }
 }
 
 #[async_trait]
@@ -26,11 +38,7 @@ impl KeyValueReader for AgConsul {
             wait: Default::default(),
         };
 
-        let rkr = self.consul_client.read_key(key_req).await.unwrap_or_else(|err| {
-            //TODO: @tnuanchuay please log error
-            return Vec::new();
-        });
-
+        let rkr = self.consul_client.read_key(key_req).await.unwrap_or_default();
         return Self::get_by_key(rkr, key);
     }
 }
@@ -46,7 +54,7 @@ impl AgConsul {
         return Consul::new(config);
     }
 
-    fn default(&self, url: &'static str, dc: &'static str) -> AgConsul{
+    pub fn default(url: &'static str, dc: &'static str) -> AgConsul{
         AgConsul {
             dc,
             consul_client: Self::init_consul(url),
